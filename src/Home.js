@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Web3 from "web3";
+import Web3, { eth } from "web3";
 import {ABI, Address} from "./Global/contract.js"
 
 const web3 = new Web3();
@@ -7,9 +7,8 @@ var contract;
 var userAccount;
 
 const Home = () => {
-    
+    var provider;
     const [account, setAccount] = useState();
-    const [provider, setProvider] = useState();
     const [ethBalance, setEthBalance] = useState("");
     const [contractBalance, setContractBalance] = useState("");
     const [approveTxId, setApproveTxId] = useState("");
@@ -21,20 +20,24 @@ const Home = () => {
     const [more, setMore] = useState(false);
     const [approved, setApproved] = useState();
     const [depositEth, setDepositEth] = useState(0);
+    const [depositAddr, setDepositAddr] = useState("");
+    const [submitAddr, setSubmitAddr] = useState("");
+    const [submitEth, setSubmitEth] = useState("");
+    const [submitTxData, setSubmitTxdata] = useState("");
 
-    function connect2BlockChain()
+    const connect2BlockChain = async() =>
     {
         if(!provider)
         {
             if(window.ethereum)
             {
-                setProvider(window.ethereum)
+                provider = window.ethereum;
                 console.log("使用 window.ethereum.")
             }
             else if(window.web3)
             {
-                setProvider(window.web3.currentProvider);
-                console.log("使用 window.wrb3.currentProvider")
+                provider = window.web3.currentProvider;
+                console.log("使用 window.web3.currentProvider")
             }
             else
                 console.log("Non-ethereum browser detected. You should install Matamask");
@@ -47,21 +50,23 @@ const Home = () => {
         }
     }
     
+    window.ethereum.on('accountsChanged',async function (accounts) {
+        console.log(accounts[0]);
+        setAccount(accounts[0]);
+        const ethBalancde = await web3.eth.getBalance(accounts[0]);
+        setEthBalance(String(ethBalancde));
+    })
+
     const connect2Wallet = async() =>
     {
-        if(!account)
-        {
-            console.log("Connect to wallet...");
-            await provider.request({method: "eth_requestAccounts"});
-            web3.setProvider(provider);
-            userAccount = await web3.eth.getAccounts();
-            console.log(userAccount);
-            setAccount(userAccount[0]);
-            const ethBalancde = await web3.eth.getBalance(userAccount[0]);
-            setEthBalance(String(ethBalancde));
-        }
-        else
-            console.log("已有連接上的錢包")
+        console.log("Connect to wallet...");
+        web3.setProvider(provider);
+        await provider.request({method: 'eth_requestAccounts'});
+        userAccount = await web3.eth.getAccounts();
+        console.log(userAccount);
+        setAccount(userAccount[0]);
+        const ethBalancde = await web3.eth.getBalance(userAccount[0]);
+        setEthBalance(String(ethBalancde));
     }
 
     const connect2Contract = async() =>
@@ -73,9 +78,17 @@ const Home = () => {
             setContractBalance(String(C_Balancde));
             console.log(contract);
             console.log("獲取合約完畢");
+            getOwners();
         }
         else
             console.log("已有獲取到的合約")
+    }
+
+    const login = async() =>
+    {
+        await connect2BlockChain(); 
+        await connect2Wallet();
+        await connect2Contract();
     }
 
     const getOwners = async() =>
@@ -98,13 +111,13 @@ const Home = () => {
         }
     }
 
-    const deposit = async(e) =>
-    {
+    const deposit = async() =>
+    {   
         await web3.eth.sendTransaction(
             {
                 from:account,
-                to:Address,
-                value:1000000000000000000
+                to:depositAddr,
+                value:depositEth
             }
         );
         const ethBalancde = await web3.eth.getBalance(account);
@@ -113,11 +126,37 @@ const Home = () => {
         setContractBalance(String(C_Balancde));
     }
 
+    const depositEthChange = (e) =>
+    {
+        setDepositEth(e.target.value);
+    }
+
+    const depositAddrChange = (e) =>
+    {
+        setDepositAddr(e.target.value);
+    }
+
+
     const submit = async() =>
     {
-        await contract.methods.submit("0x7196472C5702f973bB6572eE104D660129DFEA23", "1000000000000", web3.utils.utf8ToHex('Test1')).send({from:account,gas: '1000000'});
+        await contract.methods.submit(submitAddr, submitEth, web3.utils.utf8ToHex(submitTxData)).send({from:account,gas: '1000000'});
         const C_Balancde = await web3.eth.getBalance(Address);
         setContractBalance(String(C_Balancde));
+    }
+
+    const submitAddrChange = (e) =>
+    {
+        setSubmitAddr(e.target.value);
+    }
+
+    const submitEthChange = (e) =>
+    {
+        setSubmitEth(e.target.value);
+    }
+
+    const submitTxDataChange = (e) =>
+    {
+        setSubmitTxdata(e.target.value);
     }
 
     const approveTxIdChange = (e) =>
@@ -173,6 +212,11 @@ const Home = () => {
     {
         await contract.methods.execute(executeTxId).send({from:account});
         console.log(account + " execute No." + executeTxId + " Tx!");
+        const ethBalancde = await web3.eth.getBalance(account);
+        setEthBalance(String(ethBalancde));
+        const C_Balancde = await web3.eth.getBalance(Address);
+        setContractBalance(String(C_Balancde));
+
     }
 
     const executeTxIdChange = (e) =>
@@ -183,14 +227,33 @@ const Home = () => {
     return(
         <div>
             <div>錢包地址: {account}</div>
-            <div>錢包餘額: {ethBalance}</div>
+            <div>錢包餘額: {ethBalance / 10**18} ETH</div>
             <div>合約地址: {Address}</div>
-            <div>合約存款餘額: {contractBalance}</div>
-            <div onClick={connect2BlockChain}> 連接區塊鏈 </div>
-            <div onClick={connect2Wallet}> 連接錢包 </div>
-            <div onClick={connect2Contract}> 連接合約 </div>
-            <div onClick={getOwners}> 取得Owners </div>
+            <div>合約存款餘額: {contractBalance / 10**18} ETH</div>
+            <div onClick={login}> Login </div>
+            <div>---------------------</div>
+            <div>
+                <span>To_Addr: </span>
+                <input type="text" onChange={depositAddrChange}></input>
+            </div>
+            <div>
+                <span>Wei: </span>
+                <input type="number" onChange={depositEthChange}></input>
+            </div>
             <div onClick={deposit}> Deposit </div>
+            <div>---------------------</div>
+            <div>
+                <span>To_Addr: </span>
+                <input type="text" onChange={submitAddrChange}></input>
+            </div>
+            <div>
+                <span>Wei: </span>
+                <input type="text" onChange={submitEthChange}></input>
+            </div>
+            <div>
+                <span>TxData: </span>
+                <input type="text" onChange={submitTxDataChange}></input>
+            </div>
             <div onClick={submit}> Submit </div>
             <div>---------------------</div>
             <input type="number" onChange={watchTxIdChange}></input>
@@ -198,7 +261,8 @@ const Home = () => {
             {tx && (
                 <div>
                     <div>to: {tx.to}</div>
-                    <div>value: {String(tx.value)}</div>
+                    <div>value: {Number(String(tx.value))/10**18} ETH </div>
+                    <div>Max:{Number(Number.MAX_VALUE)/10**18}</div>
                     <div>execute: {String(tx.executed)}</div>
                     {!more && (
                         <div onClick={watchApprove}>查看更多</div>
